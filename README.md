@@ -8,7 +8,7 @@ Claude Code skills for enhanced productivity.
 
 ```bash
 # Clone repository
-git clone git@github.com:thelongestusernameofall/Simon-Skills.git Simon-Skills
+git clone https://github.com/thelongestusernameofall/Simon-Skills.git Simon-Skills
 
 # Enter directory
 cd Simon-Skills

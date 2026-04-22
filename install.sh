@@ -171,6 +171,123 @@ install_ag() {
     echo -e "${GREEN}✓ ag installed${NC}"
 }
 
+# Install docx2md-cli (Word to Markdown converter)
+install_docx2md() {
+    echo -e "${BLUE}Installing docx2md-cli (Word to Markdown converter)...${NC}"
+    
+    # Already installed?
+    if command -v docx2md &> /dev/null; then
+        echo -e "${GREEN}✓ docx2md already installed ($(docx2md --version 2>/dev/null || echo 'unknown version'))${NC}"
+        return 0
+    fi
+    
+    # Ensure Python 3.9+ is available
+    local python_cmd=""
+    if command -v python3 &> /dev/null; then
+        python_cmd="python3"
+    elif command -v python &> /dev/null; then
+        python_cmd="python"
+    else
+        echo -e "${YELLOW}Python not found. Installing Python...${NC}"
+        case "$OS" in
+            macos)
+                case "$PKG_MANAGER" in
+                    brew) brew install python3 ;;
+                    *) echo -e "${RED}Please install Python 3.9+ first${NC}"; return 1 ;;
+                esac
+                python_cmd="python3"
+                ;;
+            debian)
+                sudo apt update
+                sudo apt install -y python3 python3-pip python3-venv
+                python_cmd="python3"
+                ;;
+            fedora)
+                sudo dnf install -y python3 python3-pip
+                python_cmd="python3"
+                ;;
+            arch)
+                sudo pacman -S --noconfirm python python-pip
+                python_cmd="python3"
+                ;;
+            opensuse)
+                sudo zypper install -y python3 python3-pip
+                python_cmd="python3"
+                ;;
+            alpine)
+                apk add --no-cache python3 py3-pip
+                python_cmd="python3"
+                ;;
+            windows)
+                echo -e "${YELLOW}Please install Python 3.9+ from https://www.python.org/downloads/${NC}"
+                return 1
+                ;;
+        esac
+    fi
+    
+    # Check Python version >= 3.9
+    local py_version=$($python_cmd -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")
+    local py_major=$(echo "$py_version" | cut -d. -f1)
+    local py_minor=$(echo "$py_version" | cut -d. -f2)
+    if [ "$py_major" -lt 3 ] || { [ "$py_major" -eq 3 ] && [ "$py_minor" -lt 9 ]; }; then
+        echo -e "${YELLOW}Python $py_version found, but docx2md-cli requires Python >= 3.9${NC}"
+        echo -e "${YELLOW}Attempting install anyway...${NC}"
+    fi
+    
+    # Install lxml system dependencies (required for docx2md-cli)
+    case "$OS" in
+        debian)
+            sudo apt install -y libxml2-dev libxslt1-dev 2>/dev/null || true
+            ;;
+        fedora)
+            sudo dnf install -y libxml2-devel libxslt-devel 2>/dev/null || true
+            ;;
+        arch)
+            sudo pacman -S --noconfirm libxml2 libxslt 2>/dev/null || true
+            ;;
+        opensuse)
+            sudo zypper install -y libxml2-devel libxslt-devel 2>/dev/null || true
+            ;;
+        alpine)
+            apk add --no-cache libxml2-dev libxslt-dev 2>/dev/null || true
+            ;;
+    esac
+    
+    # Try install methods in order: pipx > pip --user > pip > venv fallback
+    if command -v pipx &> /dev/null; then
+        echo -e "${BLUE}Installing via pipx (isolated)...${NC}"
+        pipx install "docx2md-cli[frontmatter]" 2>/dev/null || pipx install docx2md-cli
+    elif $python_cmd -m pip install --user "docx2md-cli[frontmatter]" 2>/dev/null; then
+        echo -e "${BLUE}Installed via pip --user${NC}"
+    elif $python_cmd -m pip install "docx2md-cli[frontmatter]" 2>/dev/null; then
+        echo -e "${BLUE}Installed via pip${NC}"
+    else
+        # Fallback: venv
+        echo -e "${YELLOW}System pip unavailable. Creating isolated venv...${NC}"
+        local venv_dir="${HOME}/.docx2md-env"
+        $python_cmd -m venv "$venv_dir"
+        source "$venv_dir/bin/activate"
+        pip install "docx2md-cli[frontmatter]"
+        # Create wrapper script in ~/.local/bin
+        mkdir -p "${HOME}/.local/bin"
+        cat > "${HOME}/.local/bin/docx2md" << 'WRAPPER'
+#!/bin/bash
+source "$HOME/.docx2md-env/bin/activate"
+exec docx2md "$@"
+WRAPPER
+        chmod +x "${HOME}/.local/bin/docx2md"
+        deactivate
+        echo -e "${YELLOW}Installed via venv. Ensure ~/.local/bin is in your PATH.${NC}"
+    fi
+    
+    # Verify
+    if command -v docx2md &> /dev/null; then
+        echo -e "${GREEN}✓ docx2md installed ($(docx2md --version 2>/dev/null || echo 'ok'))${NC}"
+    else
+        echo -e "${YELLOW}docx2md installed but not in PATH. Try: source ~/.bashrc or restart your shell${NC}"
+    fi
+}
+
 # Get list of skills from repo
 get_skills() {
     find "$REPO_DIR" -maxdepth 1 -type d ! -name '.' ! -name '.git' ! -name '.*' | while read -r dir; do
@@ -252,14 +369,16 @@ usage() {
     echo "Usage: $0 [COMMAND]"
     echo ""
     echo "Commands:"
-    echo "  install          Install all skills (default)"
+    echo "  install          Install all skills + dependencies (default)"
     echo "  install-ag       Install The Silver Searcher only"
+    echo "  install-docx2md  Install docx2md-cli only"
     echo "  list             List installed skills"
     echo "  help             Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0               # Install all skills"
+    echo "  $0               # Install all skills + dependencies"
     echo "  $0 install-ag    # Install ag tool"
+    echo "  $0 install-docx2md  # Install docx2md-cli tool"
     echo "  $0 list          # List installed skills"
 }
 
@@ -271,10 +390,14 @@ main() {
     case "${1:-install}" in
         install)
             install_ag
+            install_docx2md
             install_all_skills
             ;;
         install-ag)
             install_ag
+            ;;
+        install-docx2md)
+            install_docx2md
             ;;
         list)
             list_installed
